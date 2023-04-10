@@ -15,16 +15,20 @@ to concentrate the damage statistics.
 """
 
 import numpy as np
-import pandas as pd
+import pandas import DataFrame, concat
 from scipy import stats
 from scipy.interpolate import CubicSpline
 import logging
 from datetime import datetime
-from fenics import *
+
+from fenics import (
+    Mesh, SubDomain, near, Measure,
+    MeshFunction, dot, solve
+)
+
 from DamageBase import DamageProblem
 from Domains2D import RectangularDomain, RectangularNotchedDomain
 from LinearElastodynamics import update_fields
-from FenicsIssues import SaveError
 
 class UniaxialStress(DamageProblem):
     def __init__(self, length, width, res, ρ, E, ν, Δt, f_left, f_right, 
@@ -321,7 +325,7 @@ class NotchedUniaxialStress(UniaxialStress):
 
 # generating stress-strain curves
 def interpolate_stress_on_strain(
-    ss : pd.DataFrame, strain_grid : np.ndarray, 
+    ss : DataFrame, strain_grid : np.ndarray, 
     identifiers=None):
     """
     Use interpolation to put all stress-strain curves onto the same
@@ -359,7 +363,7 @@ def interpolate_stress_on_strain(
         )(strain_grid)
 
         # assemble new dataset, no longer using time
-        new_dataset = pd.DataFrame.from_dict({
+        new_dataset = DataFrame.from_dict({
             "time" : np.linspace(np.min(ss["time"]), np.max(ss["time"]), len(strain_grid)),
             "strain" : strain_grid,
             "stress" : new_stress
@@ -383,4 +387,4 @@ def interpolate_stress_on_strain(
         replacement_dataframes.append(replacement_data)
 
     # concatenate dataframes, they share the same column names
-    return pd.concat(replacement_dataframes, axis=0, ignore_index=True)
+    return concat(replacement_dataframes, axis=0, ignore_index=True)
