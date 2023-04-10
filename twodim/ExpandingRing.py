@@ -6,7 +6,12 @@ Assuming an annular domain, expand the inner boundary.
 
 import numpy as np
 import logging
-from fenics import *
+
+from fenics import (
+    Expression, DirichletBC, solve, 
+    set_log_level
+)
+
 from DamageBase import DamageProblem
 from Domains2D import AnnularDomain
 from LinearElastodynamics import update_fields
