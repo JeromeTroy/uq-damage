@@ -11,7 +11,12 @@ right : Dirichlet with u_x = f(t), u_y = 0
 import numpy as np
 import logging
 from datetime import datetime
-from fenics import *
+
+from fenics import (
+    DirichletBC, solve,
+    near, set_log_level
+)
+
 from DamageBase import DamageProblem
 from Domains2D import RectangularDomain, RectangularNotchedDomain
 from LinearElastodynamics import update_fields
