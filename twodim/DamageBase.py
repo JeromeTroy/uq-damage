@@ -1,11 +1,12 @@
 import numpy as np
 import logging
+from abc import ABC as AbstractBaseClass
 
 from fenics import (
     Constant,
     FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, 
     TestFunction, TrialFunction, Function, MeshFunction, 
-    Mesh, dx, 
+    Mesh, dx, derivative,
     inner, project, 
     HDF5File
 )
@@ -16,7 +17,7 @@ import LinearElastodynamics as LE
 
 
 
-class DamageProblem(object):
+class DamageProblem(AbstractBaseClass):
     """
     This class encapsulates the common framework and generates the neccessary
     function spaces and fields.
@@ -31,7 +32,8 @@ class DamageProblem(object):
     irreversible - Sets whether or not the damage is irreversible or not.
     """
 
-    def __init__(self, mesh, ρ, E, ν, Δt,
+    def __init__(self, 
+                 mesh : Mesh, ρ, E, ν, Δt,
                  η_m=1e-4, η_k=1e-4, α_m=0.2, α_f=0.4, irreversible=True, 
                  solver_params={'newton_solver': {'linear_solver': 'umfpack'}}):
         self.mesh = mesh
@@ -284,41 +286,10 @@ class DamageProblem(object):
 
 
         return workload_summary
+    
+    def integrate(self, nsteps, nsave, record_times=False, **save_kwargs):
+        raise NotImplementedError
 
-    @classmethod
-    def make_new_problem(cls, instance, 
-        mesh: Mesh, dt: float, X=None):
-        """
-        Generate a sort of duplicate problem, 
-        mimicking a Factory design pattern
-        "cls" argument stands for class, this is called as
-        instance.make_new_problem(instance, mesh, dt, X)
-
-        Input:
-            instance : DamageProblem
-                instance of problem to copy
-            mesh : Mesh object
-                new mesh for problem
-            dt : float
-                new time step
-            X : random field for problem, optional.
-                The default is None, in which case nothing
-                is done with this.
-        Output:
-            new_problem : DamageProblem instance
-                duplicate problem with new mesh, step size, 
-                and random data
-        """
-        args = (mesh, instance.ρ, instance.E, instance.ν, dt)
-        kwargs = {
-            "η_m" : instance.η_m, "η_k" : instance.η_k, 
-            "α_m" : instance.α_m, "α_f" : instance.α_f, 
-            "irreversible" : instance.irreversible
-        }
-        new_problem = cls(*args, **kwargs)
-        if X is not None:
-            new_problem.set_softening_fields(X, instance.Δσ)
-        return new_problem
 
 def load_data(mesh: Mesh, data_fname: str, 
     V: FunctionSpace, dataname: str):
