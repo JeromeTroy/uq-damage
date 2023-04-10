@@ -2,17 +2,15 @@
 Domains2D.py - Module for generating domains to be studied
 
 """
-
-from fenics import *
 import numpy as np
+
+from fenics import (
+    Point, RectangleMesh, Mesh, XDMFFile
+)
+
 import pygmsh
 import meshio
 import gmsh
-
-try:
-    from mshr import *
-except:
-    print("Error, cannot import mshr, meshing capabilities are limited!")
 
 
 def RectangularDomain(Lx, Ly, Nx, Ny):
@@ -25,30 +23,6 @@ def RectangularDomain(Lx, Ly, Nx, Ny):
     domain=RectangleMesh(Point(-Lx, -Ly), Point(Lx, Ly), Nx, Ny, "crossed")
 
     return domain
-
-def RectangularNotchedDomain(Lx, Ly, Nr, nl, nh):
-    """
-    RectangularNotchedDomain - construct a rectangular domain
-    of the form [-Lx, Lx] × [-Ly, Ly] with a notch
-    at the upper middle, an Isosceles triangle with vertices
-    (-nl/2 * Lx, Ly), (0, Ly - nh * Ly), (nl/2 * Lx, Ly)
-    """
-
-    rect = Rectangle(
-        Point(-Lx, -Ly), Point(Lx, Ly)
-    )
-
-    vertices = [
-        Point(-nl/2 * Lx, Ly), 
-        Point(0, Ly - nh * Ly),
-        Point(nl/2 * Lx, Ly)
-    ]
-    notch = Polygon(vertices)
-    domain = rect - notch 
-
-    mesh = generate_mesh(domain, Nr)
-
-    return mesh
 
 def AnnularDomain(r0, r1, Nr):
     """
