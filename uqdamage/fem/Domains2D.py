@@ -139,7 +139,7 @@ def RectangularNotchedDomain(Lx, Ly, h, nl, nh):
 
     return mesh
 
-def AnnularDomain(r, res):
+def AnnularDomain(r, h):
     """
     AnnularDomain - construct a ring domain using gmsh of the form
     ||x|| in (r, 1) with 0 < r < 1.
@@ -160,10 +160,10 @@ def AnnularDomain(r, res):
     model = geometry.__enter__()
 
     # construct polygonal approximations to the inner and outer rings
-    nθ = int(2 * np.pi / res)
+    nθ = int(2 * np.pi / h)
     θ = np.linspace(0, 2*np.pi, nθ)
     points_outer = [
-        model.add_point((np.cos(t), np.sin(t)), mesh_size=res)
+        model.add_point((np.cos(t), np.sin(t)), mesh_size=h)
         for t in θ
     ]
     edges_outer = [
@@ -173,9 +173,13 @@ def AnnularDomain(r, res):
     outer_loop = model.add_curve_loop(edges_outer)
 
     nθin = int(r * nθ)
-    θ = np.linspace(0, 2*np.pi, nθin)
+    # apply an offset to these angles
+    # the loop creates an area of tighter mesh at the junction
+    # this offset avoids the outer loop and inner loop having the same
+    # area of tighter mesh, creating an overall more uniform mesh
+    θ = np.linspace(0, 2*np.pi, nθin) + np.pi / 2
     points_inner = [
-        model.add_point((r * np.cos(t), r * np.sin(t)), mesh_size=res)
+        model.add_point((r * np.cos(t), r * np.sin(t)), mesh_size=h)
         for t in θ
     ]
     edges_inner = [
