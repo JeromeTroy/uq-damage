@@ -3,17 +3,14 @@ Domains2D.py - Module for generating domains to be studied
 
 """
 
-from fenics import *
+from fenics import (
+    RectangleMesh, Point, 
+    Mesh, XDMFFile
+)
 import numpy as np
 import pygmsh
 import meshio
 import gmsh
-
-try:
-    from mshr import *
-except:
-    print("Error, cannot import mshr, meshing capabilities are limited!")
-
 
 def RectangularDomain(Lx, Ly, Nx, Ny):
     """
@@ -22,61 +19,28 @@ def RectangularDomain(Lx, Ly, Nx, Ny):
     nodes in the y coordinate
     """
 
-    domain=RectangleMesh(Point(-Lx, -Ly), Point(Lx, Ly), Nx, Ny, "crossed")
-
-    return domain
-
-def RectangularNotchedDomain(Lx, Ly, Nr, nl, nh):
-    """
-    RectangularNotchedDomain - construct a rectangular domain
-    of the form [-Lx, Lx] × [-Ly, Ly] with a notch
-    at the upper middle, an Isosceles triangle with vertices
-    (-nl/2 * Lx, Ly), (0, Ly - nh * Ly), (nl/2 * Lx, Ly)
-    """
-
-    rect = Rectangle(
-        Point(-Lx, -Ly), Point(Lx, Ly)
+    domain = RectangleMesh(
+        Point(-Lx, -Ly), Point(Lx, Ly), 
+        Nx, Ny, "crossed"
     )
 
-    vertices = [
-        Point(-nl/2 * Lx, Ly), 
-        Point(0, Ly - nh * Ly),
-        Point(nl/2 * Lx, Ly)
-    ]
-    notch = Polygon(vertices)
-    domain = rect - notch 
-
-    mesh = generate_mesh(domain, Nr)
-
-    return mesh
-
-def AnnularDomain(r0, r1, Nr):
-    """
-    AnnularDomain - Construct an annular domain
-
-    r0, r1 - inner and outer radii
-    Nr - mesh parameter, larger valeus are more refined
-    """
-
-    domain=generate_mesh(Circle(Point(0,0),r1)-Circle(Point(0,0),r0), Nr)
-
     return domain
 
-def PacmanDomain(r, θ, Nr):
-    """
-    PacmanDomain - Construct a Pacman shaped domain
+# def PacmanDomain(r, θ, Nr):
+#     """
+#     PacmanDomain - Construct a Pacman shaped domain
 
-    r - radius of the Pacman
-    θ - opening angle is of size 2 * θ
-    """
+#     r - radius of the Pacman
+#     θ - opening angle is of size 2 * θ
+#     """
 
-    disc = Circle(Point(0,0),r)
-    triangle_vertices = [Point(0,0), Point(-2*r*np.cos(θ),2*r*np.sin(θ)),Point(-2*r*np.cos(θ),-2*r*np.sin(θ))]
-    triangle = Polygon(triangle_vertices)
-    pacman = disc - triangle
-    domain = generate_mesh(disc - triangle, Nr)
+#     disc = Circle(Point(0,0),r)
+#     triangle_vertices = [Point(0,0), Point(-2*r*np.cos(θ),2*r*np.sin(θ)),Point(-2*r*np.cos(θ),-2*r*np.sin(θ))]
+#     triangle = Polygon(triangle_vertices)
+#     pacman = disc - triangle
+#     domain = generate_mesh(disc - triangle, Nr)
 
-    return domain
+#     return domain
 
 
 def create_mesh(mesh, cell_type, prune_z=False):
@@ -87,9 +51,9 @@ def create_mesh(mesh, cell_type, prune_z=False):
                            "name_to_read": [cell_data]})
     return out_mesh
 
-def RectangularNotchedDomainGMSH(Lx, Ly, res, nl, nh):
+def RectangularNotchedDomain(Lx, Ly, res, nl, nh):
     """
-    RectangularNotchedDomainGMSH - construct a rectangular domain using gmsh of
+    RectangularNotchedDomain - construct a rectangular domain using gmsh of
     the form [-Lx, Lx] × [-Ly, Ly] with a notch at the upper middle, an
     Isosceles triangle with vertices (-nl/2 * Lx, Ly), (0, Ly - nh * Ly), (nl/2
     * Lx, Ly)
@@ -139,9 +103,9 @@ def RectangularNotchedDomainGMSH(Lx, Ly, res, nl, nh):
 
     return mesh
 
-def RingDomainGMSH(r, res):
+def AnnularDomain(r, res):
     """
-    RingDomainGMSH - construct a ring domain using gmsh of the form
+    AnnularDomain - construct a ring domain using gmsh of the form
     ||x|| in (r, 1) with 0 < r < 1.
 
     Input:
