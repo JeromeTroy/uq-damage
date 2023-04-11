@@ -75,7 +75,21 @@ def RectangularNotchedDomain(Lx, Ly, h, nl, nh):
     Isosceles triangle with vertices (-nl/2 * Lx, Ly), (0, Ly - nh * Ly), (nl/2
     * Lx, Ly)
 
-    res specifices the mesh resolution
+    Input:
+        Lx, Ly : float > 0
+            length and width of domain
+        h : float > 0, or iterable of floats > 0
+            mesh size parameter, proportional to cell diameters
+            if multiple values specified, the mean is used
+        nl, nh : float > 0
+            length and depth of notch
+    Output:
+        mesh : Mesh
+            fenics mesh
+    
+    Note:
+        this function generates residual files _mesh.* which can be
+        safely deleted
 
     """
 
