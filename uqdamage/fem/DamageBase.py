@@ -11,9 +11,9 @@ from fenics import (
     HDF5File
 )
 
-import DamageDynamics2D as DD
-from LinearElastodynamics import avg_α
-import LinearElastodynamics as LE
+import uqdamage.fem.DamageDynamics2D as DD
+from uqdamage.fem.LinearElastodynamics import avg_α
+import uqdamage.fem.LinearElastodynamics as LE
 
 
 
