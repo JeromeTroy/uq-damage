@@ -8,17 +8,24 @@ from fenics import (
     Mesh, XDMFFile
 )
 import numpy as np
+from collections.abc import Iterable
 import pygmsh
 import meshio
 import gmsh
 
-def RectangularDomain(Lx, Ly, Nx, Ny):
+def RectangularDomain(Lx, Ly, res):
     """
     RectangularDomain - Construct a rectangular domain of the form
     [-Lx, Lx]×[-Ly, Ly] with a total of Nx nodes in the x coordinate and Ny
     nodes in the y coordinate
     """
-
+    
+    if isinstance(res, Iterable):
+        Nx, Ny = res
+    else:
+        Nx = res
+        Ny = int(res * Ly / Lx)
+    
     domain = RectangleMesh(
         Point(-Lx, -Ly), Point(Lx, Ly), 
         Nx, Ny, "crossed"
