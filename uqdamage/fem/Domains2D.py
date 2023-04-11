@@ -18,6 +18,16 @@ def RectangularDomain(Lx, Ly, res):
     RectangularDomain - Construct a rectangular domain of the form
     [-Lx, Lx]×[-Ly, Ly] with a total of Nx nodes in the x coordinate and Ny
     nodes in the y coordinate
+
+    Input:
+        Lx, Ly : floats > 0
+            length and width of domain
+        res : int > 1, or list of ints, each > 1
+            number of subdivisitions, either along length
+            or specified separately for length and width
+    Output:
+        domain : Mesh object
+            fenics mesh 
     """
     
     if isinstance(res, Iterable):
@@ -58,7 +68,7 @@ def create_mesh(mesh, cell_type, prune_z=False):
                            "name_to_read": [cell_data]})
     return out_mesh
 
-def RectangularNotchedDomain(Lx, Ly, res, nl, nh):
+def RectangularNotchedDomain(Lx, Ly, h, nl, nh):
     """
     RectangularNotchedDomain - construct a rectangular domain using gmsh of
     the form [-Lx, Lx] × [-Ly, Ly] with a notch at the upper middle, an
@@ -68,18 +78,23 @@ def RectangularNotchedDomain(Lx, Ly, res, nl, nh):
     res specifices the mesh resolution
 
     """
+
+    if isinstance(h, Iterable):
+        # take mean
+        h = sum(h) / len(h)
+
     # Initialize empty geometry using the build in kernel in GMSH
     geometry = pygmsh.geo.Geometry()
     # Fetch model we would like to add data to
     model = geometry.__enter__()
 
-    points = [model.add_point((-Lx, -Ly, 0), mesh_size=res),
-            model.add_point((Lx, -Ly, 0), mesh_size=res),
-            model.add_point((Lx, Ly, 0), mesh_size=res),
-            model.add_point((nl/2*Lx, Ly, 0), mesh_size= res),
-            model.add_point((0, Ly-nh*Ly, 0), mesh_size=res),
-            model.add_point((-nl/2 *Lx, Ly, 0), mesh_size=res),
-            model.add_point((-Lx, Ly, 0), mesh_size=res)]
+    points = [model.add_point((-Lx, -Ly, 0), mesh_size=h),
+            model.add_point((Lx, -Ly, 0), mesh_size=h),
+            model.add_point((Lx, Ly, 0), mesh_size=h),
+            model.add_point((nl/2*Lx, Ly, 0), mesh_size= h),
+            model.add_point((0, Ly-nh*Ly, 0), mesh_size=h),
+            model.add_point((-nl/2 *Lx, Ly, 0), mesh_size=h),
+            model.add_point((-Lx, Ly, 0), mesh_size=h)]
 
     # Add lines between all points creating the notch
     edges = [model.add_line(points[i], points[i+1])
