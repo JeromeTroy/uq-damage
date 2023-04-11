@@ -9,10 +9,14 @@ the circle.
 
 import numpy as np
 import logging
-from fenics import *
-from DamageBase import DamageProblem
-from Domains2D import PacmanDomain
-from LinearElastodynamics import update_fields
+
+from fenics import (
+    Expression, DirichletBC, set_log_level, solve
+)
+
+from uqdamage.fem.DamageBase import DamageProblem
+from uqdamage.fem.Domains2D import PacmanDomain
+from uqdamage.fem.LinearElastodynamics import update_fields
 
 class PacmanProblem(DamageProblem):
     """

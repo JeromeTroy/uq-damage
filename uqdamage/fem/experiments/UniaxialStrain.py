@@ -17,9 +17,9 @@ from fenics import (
     near, set_log_level
 )
 
-from DamageBase import DamageProblem
-from Domains2D import RectangularDomain, RectangularNotchedDomain
-from LinearElastodynamics import update_fields
+from uqdamage.fem.DamageBase import DamageProblem
+from uqdamage.fem.Domains2D import RectangularDomain, RectangularNotchedDomain
+from uqdamage.fem.LinearElastodynamics import update_fields
 
 
 class UniaxialStrain(DamageProblem):

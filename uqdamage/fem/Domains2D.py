@@ -2,15 +2,17 @@
 Domains2D.py - Module for generating domains to be studied
 
 """
+
+from fenics import *
 import numpy as np
-
-from fenics import (
-    Point, RectangleMesh, Mesh, XDMFFile
-)
-
 import pygmsh
 import meshio
 import gmsh
+
+try:
+    from mshr import *
+except:
+    print("Error, cannot import mshr, meshing capabilities are limited!")
 
 
 def RectangularDomain(Lx, Ly, Nx, Ny):
@@ -23,6 +25,30 @@ def RectangularDomain(Lx, Ly, Nx, Ny):
     domain=RectangleMesh(Point(-Lx, -Ly), Point(Lx, Ly), Nx, Ny, "crossed")
 
     return domain
+
+def RectangularNotchedDomain(Lx, Ly, Nr, nl, nh):
+    """
+    RectangularNotchedDomain - construct a rectangular domain
+    of the form [-Lx, Lx] × [-Ly, Ly] with a notch
+    at the upper middle, an Isosceles triangle with vertices
+    (-nl/2 * Lx, Ly), (0, Ly - nh * Ly), (nl/2 * Lx, Ly)
+    """
+
+    rect = Rectangle(
+        Point(-Lx, -Ly), Point(Lx, Ly)
+    )
+
+    vertices = [
+        Point(-nl/2 * Lx, Ly), 
+        Point(0, Ly - nh * Ly),
+        Point(nl/2 * Lx, Ly)
+    ]
+    notch = Polygon(vertices)
+    domain = rect - notch 
+
+    mesh = generate_mesh(domain, Nr)
+
+    return mesh
 
 def AnnularDomain(r0, r1, Nr):
     """
@@ -106,6 +132,79 @@ def RectangularNotchedDomainGMSH(Lx, Ly, res, nl, nh):
     meshio.write("_mesh.xdmf", triangle_mesh)
 
     # read in XDMF mesh
+    mesh = Mesh()
+    mfile = XDMFFile(mesh.mpi_comm(), "_mesh.xdmf")
+    mfile.read(mesh)
+    mfile.close()
+
+    return mesh
+
+def RingDomainGMSH(r, res):
+    """
+    RingDomainGMSH - construct a ring domain using gmsh of the form
+    ||x|| in (r, 1) with 0 < r < 1.
+
+    Input:
+        r : float in (0, 1)
+            inner radius for ring
+        res : float > 0
+            resolution parameter, specifies mesh size
+            and used to determine spacing on boundary
+    Output:
+        mesh : fenics compatible mesh object
+    """
+
+    # initialize pygmsh geometry
+    geometry = pygmsh.geo.Geometry()
+    # fetch model
+    model = geometry.__enter__()
+
+    # construct polygonal approximations to the inner and outer rings
+    nθ = int(2 * np.pi / res)
+    θ = np.linspace(0, 2*np.pi, nθ)
+    points_outer = [
+        model.add_point((np.cos(t), np.sin(t)), mesh_size=res)
+        for t in θ
+    ]
+    edges_outer = [
+        model.add_line(points_outer[i], points_outer[(i+1)%len(points_outer)])
+        for i in range(len(points_outer))
+    ]
+    outer_loop = model.add_curve_loop(edges_outer)
+
+    nθin = int(r * nθ)
+    θ = np.linspace(0, 2*np.pi, nθin)
+    points_inner = [
+        model.add_point((r * np.cos(t), r * np.sin(t)), mesh_size=res)
+        for t in θ
+    ]
+    edges_inner = [
+        model.add_line(points_inner[i], points_inner[(i+1)%len(points_inner)])
+        for i in range(len(points_inner))
+    ]
+    inner_loop = model.add_curve_loop(edges_inner)
+
+    # build ring from outer loop with hole at inner loop
+    plane_surface = model.add_plane_surface(outer_loop, holes=[inner_loop])
+    model.synchronize()
+
+    # create physical representation
+    model.add_physical([plane_surface], "Interior")
+    model.add_physical(edges_outer + edges_inner, "Boundary")
+
+    # generate mesh, write to file, and cleanup
+    geometry.generate_mesh(dim=2)
+    gmsh.write("_mesh.msh")
+    gmsh.clear()
+    geometry.__exit__()
+
+    # convert mesh to fenics compatible version
+    mesh_from_file = meshio.read("_mesh.msh")
+    triangle_mesh = create_mesh(mesh_from_file, "triangle", prune_z=True)
+    # storing in XDMF allows fenics to read in the mesh
+    meshio.write("_mesh.xdmf", triangle_mesh)
+
+    # load mesh into fenics
     mesh = Mesh()
     mfile = XDMFFile(mesh.mpi_comm(), "_mesh.xdmf")
     mfile.read(mesh)

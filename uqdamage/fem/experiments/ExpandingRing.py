@@ -12,9 +12,9 @@ from fenics import (
     set_log_level
 )
 
-from DamageBase import DamageProblem
-from Domains2D import AnnularDomain
-from LinearElastodynamics import update_fields
+from uqdamage.fem.DamageBase import DamageProblem
+from uqdamage.fem.Domains2D import AnnularDomain
+from uqdamage.fem.LinearElastodynamics import update_fields
 
 class RingProblem(DamageProblem):
     """
