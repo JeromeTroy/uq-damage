@@ -4,7 +4,11 @@ LinearElastodyanmics.py - Module for linear elastodynamics based on
 https://comet-fenics.readthedocs.io/en/latest/demo/elastodynamics/demo_elastodynamics.py.html
 """
 
-from fenics import *
+from fenics import (
+    sym, grad, tr, Identity, 
+    dot, inner,
+    dx
+)
 import numpy as np
 
 
