@@ -130,3 +130,7 @@ dmypy.json
 
 # generated mesh files from gmsh and meshio
 _mesh*
+
+# data files
+*.xdmf
+*.h5
