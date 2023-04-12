@@ -6,10 +6,11 @@ Assuming an annular domain, expand the inner boundary.
 
 import numpy as np
 import logging
+from collections.abc import Iterable
 
 from fenics import (
     Expression, DirichletBC, solve, 
-    set_log_level
+    set_log_level, Mesh
 )
 
 from uqdamage.fem.DamageBase import DamageProblem
@@ -30,20 +31,67 @@ class RingProblem(DamageProblem):
     def inner_boundary(self, x, on_boundary):
         return (x[0]**2 + x[1]**2 < self.rm**2) and on_boundary
 
-    def __init__(self, r0, r1, Nr, ρ, E, ν, c, Δt,
-        η_m=1e-4, η_k=1e-4, α_m=0.2, α_f=0.4, mesh=None, irreversible=True):
+    def __init__(self, mesh_params, ν, c, Δt,
+                 ρ=1, E=1,
+                 **kwargs):
+        """
+        Constructor for expanding ring problem
+        The expanding ring starts at rest and is expanded outward along the 
+        inner boundary at a constant expansion speed c.  
+        The default assumptions are that the ring is nondimensionalized so that
+        the outer radius = 1 (cannot be changed unless the mesh is transformed), 
+        and that ρ = E = 1.
 
-        # construct domain and set boundaries
-        self.rm = 0.5 * (r0+r1)
+        Input:
+            mesh_params : 2-tuple or Mesh object
+                if 2-tuple, is two values (r, h)
+                where r in (0, 1) is the inner radius
+                and h > 0 is the cell size for the fem discretization.
+                If Mesh object provided, this mesh is used as the fem
+                discretization
+            ν : float in (0, 0.5)
+                Poisson ratio
+            c : float > 0
+                expansion speed 
+            Δt : float > 0
+                time step size
+            ρ : float or Fenics object, optional
+                density, the default is 1
+            E : float or Fenics object, optional
+                young's modulus, the default is 1
+            **kwargs : other keyword arguments, see
+                uqdamage.fem.DamageBase.DamageProblem.__init__()
+        """
 
-        if mesh is None:
-            mesh = AnnularDomain(r0, r1, Nr)
+        # type checking parameter input for mesh
+        if isinstance(mesh_params, Mesh):
+            # mesh provided, use it
+            mesh = mesh_params
 
-        super().__init__(mesh, ρ, E, ν, Δt, η_m=η_m, η_k=η_k, α_m=α_m, α_f=α_f,irreversible=irreversible)
+            # get inner and outer radii
+            x = mesh.coordinates()
+            radii = np.linalg.norm(x, axis=1)
+            r0, r1 = min(radii), max(radii)
+        
+        elif isinstance(mesh_params, Iterable):
+            # mesh dimensions specified, use these and build mesh
+            r0 = mesh_params[0]
+            h = mesh_params[1]
+            # assumed by nondimensionalization
+            r1 = 1
+
+            mesh = AnnularDomain(r0, h)
+
+        else: 
+            raise RuntimeError("Must provide mesh_params as either Mesh object or 2-tuple (r, h)")
+        
+        super().__init__(mesh, ρ, E, ν, Δt, **kwargs)
 
         # pulling rate
         self.c = c
 
+        # construct domain and set boundaries
+        self.rm = 0.5 * (r0+r1)  
         # Sub domain for inner ring
         def inner_boundary(x, on_boundary):
             return (x[0]**2 + x[1]**2 < self.rm**2) and on_boundary
@@ -62,17 +110,17 @@ class RingProblem(DamageProblem):
         self.bcs.append(BC)
 
 
-    def set_constant_accel(self, a):
-        expr = Expression(("0.5*a*t*t * x[0]/sqrt(x[0]*x[0] + x[1]*x[1])",
-                            "0.5*a*t*t * x[1]/sqrt(x[0]*x[0] + x[1]*x[1])"),
-                            element=self.V.ufl_element(), a=a, t=0)
-        self.u_inner = expr
+    # def set_constant_accel(self, a):
+    #     expr = Expression(("0.5*a*t*t * x[0]/sqrt(x[0]*x[0] + x[1]*x[1])",
+    #                         "0.5*a*t*t * x[1]/sqrt(x[0]*x[0] + x[1]*x[1])"),
+    #                         element=self.V.ufl_element(), a=a, t=0)
+    #     self.u_inner = expr
 
-        # Sub domain for inner ring
-        def inner_boundary(x, on_boundary):
-            return (x[0]**2 + x[1]**2 < self.rm**2) and on_boundary
+    #     # Sub domain for inner ring
+    #     def inner_boundary(x, on_boundary):
+    #         return (x[0]**2 + x[1]**2 < self.rm**2) and on_boundary
 
-        self.set_inner_bc(DirichletBC(self.V, self.u_inner, inner_boundary))
+    #     self.set_inner_bc(DirichletBC(self.V, self.u_inner, inner_boundary))
 
     def set_free_expansion(self):
         self.bcs = []
