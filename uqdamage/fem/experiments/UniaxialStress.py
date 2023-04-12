@@ -15,7 +15,7 @@ to concentrate the damage statistics.
 """
 
 import numpy as np
-import pandas import DataFrame, concat
+from pandas import DataFrame, concat
 from scipy import stats
 from scipy.interpolate import CubicSpline
 import logging
@@ -26,9 +26,9 @@ from fenics import (
     MeshFunction, dot, solve
 )
 
-from DamageBase import DamageProblem
-from Domains2D import RectangularDomain, RectangularNotchedDomain
-from LinearElastodynamics import update_fields
+from uqdamage.fem.DamageBase import DamageProblem
+from uqdamage.fem.Domains2D import RectangularDomain, RectangularNotchedDomain
+from uqdamage.fem.LinearElastodynamics import update_fields
 
 class UniaxialStress(DamageProblem):
     def __init__(self, length, width, res, ρ, E, ν, Δt, f_left, f_right, 
