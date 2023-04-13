@@ -87,7 +87,7 @@ class UniaxialStrain(DamageProblem):
             raise RuntimeError("Must provide mesh_params as either Mesh object or 2-tuple (w, Nx)")
 
         # see DamageProblem.__init__
-        super().__init__(mesh, ρ, E, ν, Δt, **kwargs)
+        super().__init__(mesh, ρ, E, ν, Δt, α_f=α_f, **kwargs)
 
         # boundaries
         # left side
