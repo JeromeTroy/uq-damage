@@ -102,12 +102,14 @@ class UniaxialStress(DamageProblem):
 
         # Boundaries
         # define locations using SubDomains
+        xmin = self.xmin
+        xmax = self.xmax
         class LeftEdge(SubDomain):
             def inside(self, x, on_boundary):
-                return near(x[0], self.xmin) and on_boundary
+                return near(x[0], xmin) and on_boundary
         class RightEdge(SubDomain):
             def inside(self, x, on_boundary):
-                return near(x[0], self.xmax) and on_boundary
+                return near(x[0], xmax) and on_boundary
         
         # instatiate these and mark boundaries accordingly
         left_edge = LeftEdge()
