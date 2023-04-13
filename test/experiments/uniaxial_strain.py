@@ -5,7 +5,7 @@ logging.getLogger().setLevel(logging.INFO)
 
 from fenics import *
 
-from uqdamage.fem.experiments import UniaxialStrain as US
+from uqdamage.fem.experiments import UniaxialStrain, NotchedUniaxialStrain
 
 NOTCHED = True
 
@@ -35,7 +35,7 @@ f = Expression(
 
 if not NOTCHED:
     mesh_params = (w, (nx, ny))
-    problem = US.UniaxialStrain(mesh_params, ν, Δt, f)
+    problem = UniaxialStrain(mesh_params, ν, Δt, f)
     xdmf_name = "uniaxial_strain.xdmf"
 else:
     mesh_params = (
@@ -44,7 +44,7 @@ else:
          "notch_depth" : notch_depth}, 
          1/nx
     )
-    problem = US.NotchedUniaxialStrain(mesh_params, ν, Δt, f)
+    problem = NotchedUniaxialStrain(mesh_params, ν, Δt, f)
     xdmf_name = "notched_uniaxial_strain.xdmf"
 
 δσ = Constant(0.1)
