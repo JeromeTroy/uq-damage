@@ -20,6 +20,7 @@ from scipy import stats
 from scipy.interpolate import CubicSpline
 import logging
 from datetime import datetime
+from collections.abc import Iterable
 
 from fenics import (
     Mesh, SubDomain, near, Measure,
@@ -31,70 +32,82 @@ from uqdamage.fem.Domains2D import RectangularDomain, RectangularNotchedDomain
 from uqdamage.fem.LinearElastodynamics import update_fields
 
 class UniaxialStress(DamageProblem):
-    def __init__(self, length, width, res, ρ, E, ν, Δt, f_left, f_right, 
-        η_m=1e-4, η_k=1e-4, α_m=0.2, α_f=0.4, mesh=None, 
-        solver_params={'newton_solver': {'linear_solver': 'umfpack'}}):
+    def __init__(self, mesh_params, ν, Δt, g_left, g_right, 
+                 ρ=1, E=1, α_f=0.4, **kwargs):
         """
         Build a UniaxialStress problem
+        The uniaxial stress problem starts at rest and is pulled on the left
+        and right boundaries with some specified forcing condition.  The top
+        and bottom boundaries are stress-free. The default assumptions are 
+        that the problem is nondimensionalized so that the length of the bar 
+        is 1 (this cannot be changed unless the mesh is transformed), and that 
+        ρ = E = 1. 
+
+        For simplicity, the default rectangle is centered at the origin
 
         Input:
-            length, width : float > 0
-                size of rectangular domain,
-                will be centered at origin
-            res : int > 0 or 2-tuple of ints
-                resolution parameter. Can specify
-                different resolutions in both x and y directions
-            ρ, E, ν : float > 0
-                density, young's modulus, and poisson ratio
+            mesh_params : 2-tuple or Mesh object
+                if 2-tuple, is two values (w, nx)
+                where w is the width along the free axis (y), 
+                and nx is either a 2-tuple or integer value and specifies
+                the number of subdivisions.  If two values are provided, they
+                specify the number of subdivisions in the x and y directions 
+                respectively.
+                If Mesh object provided, this mesh is used as the fem
+                discretization
+            ν : float in (0, 0.5)
+                Poisson ratio
             Δt : float > 0
                 time step
-            f_left, f_right : Fenics Expression (like) object
-                forcing terms for the left and right sides 
-                of the domain.  These must have a parameter t (as in
-                f.t) which corresponds to current evaluation time.
+            g_left, g_right : Fenics Expression (like) object
+                Dirichlet boundary condition at right boundary
+                these must have a parameter t (as in
+                g.t) which corresponds to current evaluation time.
                 These are copied, then their copies are passed by 
                 reference to the cooresponding forms.
-            η_m, η_k : float > 0, optional
-                rayleigh damping parameters, these default to 1e-4
-            α_m, α_f : float > 0, optional
-                time stepping parameters for generalized α method. 
-                These default to 0.2 and 0.4 resp.
-            mesh : Fenics Mesh object or None, optional
-                mesh (if provided) on which the problem is defined.
-                The default is None, in which case it is built 
-                as a rectangle of length x width, with specified
-                resolutions
+            ρ : float or Fenics object, optional
+                density, the default is 1
+            E : float or Fenics object, optional
+                young's modulus, the default is 1
+            **kwargs : other keyword arguments, see
+                uqdamage.fem.DamageBase.DamageProblem.__init__()
         """
         
-        # maximum values of x and y coordinates (absolute value)
-        self.xmax = length / 2
-        self.ymax = width / 2
+        if isinstance(mesh_params, Mesh):
+            mesh = mesh_params
+            self.xmax, self.ymax = np.max(mesh.coordinates(), axis=0)
+            self.xmin, self.ymin = np.min(mesh.coordinates(), axis=0)
 
-        if mesh is None:
-            # generate rectangular domain
-            # given length, width, centered at origin
+        elif isinstance(mesh_params, Iterable):
+            w = mesh_params[0]
+            nx = mesh_params[1]
 
-            # type checking resolution parameter, either int, or tuple
-            if type(res) == type(1):
-                resx, resy = res, res
+            self.xmax = 0.5
+            self.ymax = w/2
+            self.xmin = -self.xmax
+            self.ymin = -self.ymax
+
+            if isinstance(nx, Iterable):
+                res = nx
             else:
-                # unpack tuple
-                resx, resy = res
-            mesh = RectangularDomain(self.xmax, self.ymax, resx, resy)
-
+                res = (nx, int(w * nx))
+            
+            mesh = RectangularDomain(self.xmax, self.ymax, res)
+        
+        else:
+            raise RuntimeError("Must provide mesh_params as either Mesh object or 2-tuple (w, Nx)")
+        
         # see DamageProblem.__init__
-        super().__init__(mesh, ρ, E, ν, Δt, 
-            η_m=η_m, η_k=η_k, α_m=α_m, α_f=α_f, irreversible=True, 
-            solver_params=solver_params)
+        super().__init__(mesh, ρ, E, ν, Δt, α_f=α_f, **kwargs)
 
         # Boundaries
         # define locations using SubDomains
         class LeftEdge(SubDomain):
             def inside(self, x, on_boundary):
-                return near(x[0], -length/2) and on_boundary
+                return near(x[0], self.xmin) and on_boundary
         class RightEdge(SubDomain):
             def inside(self, x, on_boundary):
-                return near(x[0], length/2) and on_boundary
+                return near(x[0], self.xmax) and on_boundary
         
         # instatiate these and mark boundaries accordingly
         left_edge = LeftEdge()
@@ -117,12 +130,12 @@ class UniaxialStress(DamageProblem):
         self.α_f_float = α_f
 
         # assign expressions for forcing
-        self.f_left = f_left
-        self.f_right = f_right
+        self.g_left = g_left
+        self.g_right = g_right
         
         # RHS for linear solve
-        self.rhs = dot(self.u_, self.f_left) * self.ds(1) + \
-            dot(self.u_, self.f_right) * self.ds(2)
+        self.rhs = dot(self.u_, self.g_left) * self.ds(1) + \
+            dot(self.u_, self.g_right) * self.ds(2)
 
     def update_forces(self, t):
         """
@@ -135,8 +148,8 @@ class UniaxialStress(DamageProblem):
         # update t values for forces, 
         # forces are passed by reference, so 
         # the necessary values are updated automatically
-        self.f_left.t = t - self.α_f_float * self.Δt
-        self.f_right.t = t - self.α_f_float * self.Δt
+        self.g_left.t = t - self.α_f_float * self.Δt
+        self.g_right.t = t - self.α_f_float * self.Δt
 
     def integrate(self, nsteps, nsave, record_times=False, **save_kwargs):
         """
@@ -223,103 +236,78 @@ class UniaxialStress(DamageProblem):
 
 class NotchedUniaxialStress(UniaxialStress):
 
-    def __init__(self, length, width, res, ρ, E, ν, Δt, f_left, f_right, 
-        notch_length=0.2, notch_width=0.1,
-        mesh=None, **kwargs):
+    def __init__(self, mesh_params, *args, **kwargs):
         """
         Build a NotchedUniaxialStress problem
-        In principle, this could be done with only the UniaxialStress
-        problem, and providing a prespecified mesh.
-        This class exists to that this can be done in one line,
-        rather than having to define the mesh separately.
-        However a mesh can be provided.
 
+        The uniaxial stress problem starts at rest and is pulled on the left
+        and right boundaries with some specified forcing condition.  The top
+        and bottom boundaries are stress-free. The default assumptions are 
+        that the problem is nondimensionalized so that the length of the bar 
+        is 1 (this cannot be changed unless the mesh is transformed), and that 
+        ρ = E = 1. 
+        This has the addition of a notch in the middle of the top boundary
+        in the shape of an isoceles triangle.
+
+        For simplicity, the default rectangle is centered at the origin
         Input:
-            length, width : float > 0
-                size of rectangular domain,
-                will be centered at origin
-            res : int > 0 or 2-tuple of ints
-                resolution parameter. Can specify
-                different resolutions in both x and y directions
-            ρ, E, ν : float > 0
-                density, young's modulus, and poisson ratio
+            mesh_params : 2-tuple or Mesh object
+                if 2-tuple, is two values (param_dict, h)
+                param_dict is a dictionary with entries
+                    "width" - domain width
+                    "notch_width" - width of notch
+                    "notch_depth" - depth of notch
+                h can either be a list of numbers (hx, hy), in which case 
+                we take the mean, or a single number.  The value of h serves as 
+                the mesh size used for mesh generation
+                If Mesh object provided, this mesh is used as the fem
+                discretization
+            ν : float in (0, 0.5)
+                Poisson ratio
             Δt : float > 0
                 time step
-            f_left, f_right : Fenics Expression (like) object
-                forcing terms for the left and right sides 
-                of the domain.  These must have a parameter t (as in
-                f.t) which corresponds to current evaluation time.
+            g_left, g_right : Fenics Expression (like) object
+                Dirichlet boundary condition at right boundary
+                these must have a parameter t (as in
+                g.t) which corresponds to current evaluation time.
                 These are copied, then their copies are passed by 
                 reference to the cooresponding forms.
-            notch_length, notch_width : float > 0, optional
-                length and width of the notch.  The notch forms
-                an isosceles triangle at the top middle of the domain,
-                with tip pointed inward.  
-                These parameters default  to length = 0.2 and width = 0.1
-            mesh : Fenics Mesh object or None, optional
-                mesh (if provided) on which the problem is defined.
-                The default is None, in which case it is built 
-                as a rectangle of length x width, with specified
-                resolutions
-            **kwargs:
-                η_m, η_k : float > 0, optional
-                    rayleigh damping parameters, these default to 1e-4
-                α_m, α_f : float > 0, optional
-                    time stepping parameters for generalized α method. 
-                    These default to 0.2 and 0.4 resp.
+            ρ : float or Fenics object, optional
+                density, the default is 1
+            E : float or Fenics object, optional
+                young's modulus, the default is 1
+            **kwargs : other keyword arguments, see
+                uqdamage.fem.DamageBase.DamageProblem.__init__()
         """
-        if mesh is None:
-            # type checking resolution parameter
-            if type(res) != type(1):
-                # if not integer, is iterable, take its mean
-                # generate_mesh() is used to build the mesh,
-                # and it only takes a single resolution number
-                res = np.mean(res)
+        if isinstance(mesh_params, Mesh):
+            # given a mesh, pass it on
+            super().__init__(mesh_params, *args, **kwargs)
+        
+        elif isinstance(mesh_params, Iterable):
+            rect_params = mesh_params[0]
+            resolution_params = mesh_params[1]
 
+            # extract dimensions for mesh
+            w = rect_params["width"]
+            notch_width = rect_params["notch_width"]
+            notch_depth = rect_params["notch_depth"]
 
-            # generate mesh with a notch out of the top
-            mesh = RectangularNotchedDomain(length / 2, width / 2, res, 
-                notch_length, notch_width)
+            # extract resolution parameters
+            if isinstance(resolution_params, Iterable):
+                res = sum(resolution_params) / len(resolution_params)
+            else:
+                res = resolution_params
 
-        # perform standard init, mesh now provided
-        super().__init__(length, width, res, ρ, E, ν, Δt, f_left, f_right,
-            mesh=mesh, **kwargs)
+            # build mesh
+            xmax = 0.5
+            ymax = w/2
+            mesh = RectangularNotchedDomain(xmax, ymax, res, 
+                                            notch_width, notch_depth)
+            
+            # standard initialization with custom mesh
+            super().__init__(mesh, *args, **kwargs)
 
-    @classmethod
-    # TODO: override this
-    def make_new_problem(cls, instance: DamageProblem, 
-        mesh: Mesh, dt: float, X=None):
-        """
-        Generate a sort of duplicate problem, 
-        mimicking a Factory design pattern
-        "cls" argument stands for class, this is called as
-        instance.make_new_problem(instance, mesh, dt, X)
-
-        Input:
-            instance : DamageProblem
-                instance of problem to copy
-            mesh : Mesh object
-                new mesh for problem
-            dt : float
-                new time step
-            X : random field for problem, optional.
-                The default is None, in which case nothing
-                is done with this.
-        Output:
-            new_problem : DamageProblem instance
-                duplicate problem with new mesh, step size, 
-                and random data
-        """
-        args = (mesh, instance.ρ, instance.E, instance.ν, dt)
-        kwargs = {
-            "η_m" : instance.η_m, "η_k" : instance.η_k, 
-            "α_m" : instance.α_m, "α_f" : instance.α_f, 
-            "irreversible" : instance.irreversible
-        }
-        new_problem = cls(*args, **kwargs)
-        if X is not None:
-            new_problem.set_softening_fields(X, instance.Δσ)
-        return new_problem
+    
 
 # analysis tools
 
