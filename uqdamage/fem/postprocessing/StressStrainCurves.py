@@ -10,7 +10,7 @@ from fenics import (
     Mesh, FunctionSpace, HDF5File, Function, dx, assemble, 
     Measure, SubDomain, near, MeshFunction, VectorFunctionSpace
 )
-from DamageBase import load_data
+from uqdamage.fem.DamageBase import load_data
 
 # rather than remember 0 -> no boundary, 1 -> left, 2 -> right
 # use an enum, which will allow these to be accessed by keywords
