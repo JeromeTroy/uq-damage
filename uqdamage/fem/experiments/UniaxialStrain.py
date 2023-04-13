@@ -39,9 +39,9 @@ class UniaxialStrain(DamageProblem):
 
         Input:
             mesh_params : 2-tuple or Mesh object
-                if 2-tuple, is two values (w, h)
+                if 2-tuple, is two values (w, nx)
                 where w is the width along the free axis (y), 
-                and h is either a 2-tuple or integer value and specifies
+                and nx is either a 2-tuple or integer value and specifies
                 the number of subdivisions.  If two values are provided, they
                 specify the number of subdivisions in the x and y directions 
                 respectively.
@@ -258,7 +258,7 @@ class NotchedUniaxialStrain(UniaxialStrain):
 
             # extract dimensions for mesh
             w = rect_params["width"]
-            notch_length = rect_params["notch_width"]
+            notch_width = rect_params["notch_width"]
             notch_depth = rect_params["notch_depth"]
 
             # resolution parameters
@@ -271,7 +271,7 @@ class NotchedUniaxialStrain(UniaxialStrain):
             xmax = 0.5
             ymax = w/2
             mesh = RectangularNotchedDomain(xmax, ymax, res, 
-                                            notch_length, notch_depth)
+                                            notch_width, notch_depth)
             
             # standard initialization with custom mesh
             super().__init__(mesh, *args, **kwargs)
