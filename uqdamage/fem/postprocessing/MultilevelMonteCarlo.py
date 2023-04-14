@@ -143,6 +143,20 @@ def quick_cdf(arr : np.ndarray, x : float) -> float:
     
     return np.sum(arr <= x) / len(arr)
 
+def bayes_update(p : float, conditions):
+    """
+    Helper function which performs Bayesian update
+
+    Input:
+        p : float
+            prior probability
+        conditions : 2-tuple, of P(E | prev) and P(E | not prev)
+            where prev occurs with probability p
+    Output:
+        updated probability using bayes update proceedure
+    """
+    return p * conditions[0] + (1 - p) * conditions[1]
+
 def brute_force_cdf_update(x : float, 
                            new_data : np.ndarray, 
                            prev_data : np.ndarray,
@@ -169,98 +183,205 @@ def brute_force_cdf_update(x : float,
         quick_cdf(new_data[prev_data > x], x)
     )
 
-    new_cdf = prev_cdf * conditions[0] + \
-        (1 - prev_cdf) * conditions[1]
-    return new_cdf
+    return bayes_update(prev_cdf, conditions)
 
-def split_data_by_levels(df : pd.DataFrame, value_name : str):
+def sum_indicator_cdf_update(x : float, 
+                             new_data : np.ndarray,
+                             prev_data : np.ndarray,
+                             prev_cdf : float):
     """
+    Compute updated CDF using sum of indicator method
+    given subsampled data on previous level and this level
+    X_l, X_{l+1}, 
+    p_l(x) = P(X_l <= x)
+    p_l(x) = 0 =>
+    P(X_{l+1} <= x | X_l <= x) = E[1(X_{l+1} <= x) 1(X_l <= x)] / p_l(x)
+    else P(. | .) = 0
+
+    Input:
+        x : float
+            comparison value, used in P(X <= x)
+        new_data, prev_data : numpy arrays
+            arrays of data from previous level and current level
+        prev_cdf : float in [0, 1]
+            previous level's CDF value
+    Output:
+        new_cdf : float in [0, 1]
+            updated CDF value
+    """
+
+    denoms = np.array((
+        np.sum(prev_data <= x), 
+        np.sum(prev_data > x)
+    ))
+    numers = np.array((
+        np.sum(np.logical_and(prev_data <= x, new_data <= x)),
+        np.sum(np.logical_and(prev_data > x, new_data <= x))
+    ))
     
+    ratios = numers / denoms
+    # fix div 0 errors
+    ratios[denoms == 0] = 0
+
+    return bayes_update(prev_cdf, ratios)
+
+def subsampled_kde_cdf_update(x : float, 
+                             new_data : np.ndarray,
+                             prev_data : np.ndarray,
+                             prev_cdf : float):
     """
-def cdf_stopping_time(df : pd.DataFrame, stopping_time : str, t_grid):
+    Compute updated CDF using KDE of subsamples
+    given samples X_{l+1} and X_l
+    first take only X_{l+1} where X_l <= x
+    build KDE on these subsamples and integrate
+
+    Input:
+        x : float
+            comparison value, used in P(X <= x)
+        new_data, prev_data : numpy arrays
+            arrays of data from previous level and current level
+        prev_cdf : float in [0, 1]
+            previous level's CDF value
+    Output:
+        new_cdf : float in [0, 1]
+            updated CDF value
     """
-    Use conditional probability based MLMC to compute the
-    CDF for a stopping time
+
+    # subsample data
+    new_data_sub = (new_data[prev_data <= x],
+                    new_data[prev_data > x])
+    # check that KDE can be constructed
+    n_unique = [len(list(set(data))) for data in new_data_sub]
+    conditionals = np.zeros(2)
+    for index, (nu, dat) in enumerate(zip(n_unique, new_data_sub)):
+        # guard against case not enough entries to build KDE
+        if nu == 0:
+            conditionals[index] = 0
+            continue
+        if nu == 1:
+            conditionals[index] = float(dat[0] <= x)
+            continue
+
+        sub_kde = gaussian_kde(dat)
+        conditionals[index] = sub_kde.integrate_box_1d(0, x)
+    
+    return bayes_update(prev_cdf, conditionals)
+
+def joint_kde_cdf_update(x : float, 
+                        new_data : np.ndarray,
+                        prev_data : np.ndarray,
+                        prev_cdf : float):
+    """
+    Compute updated CDF using joint KDE
+    build KDE on prev data ρ(prev)
+    build KDE on joint new and prev data
+    π(new, prev)
+    conditional : P(new <= x, prev <= x) / P(prev <= x)
+    dido but with prev > x.
+
+    Input:
+        x : float
+            comparison value, used in P(X <= x)
+        new_data, prev_data : numpy arrays
+            arrays of data from previous level and current level
+        prev_cdf : float in [0, 1]
+            previous level's CDF value
+    Output:
+        new_cdf : float in [0, 1]
+            updated CDF value
+    """
+
+    # build joint kde
+    joint_data = np.vstack([new_data, prev_data])
+    joint_kde = gaussian_kde(joint_data)
+
+    prev_kde = gaussian_kde(prev_data)
+
+    conditionals = [
+        joint_kde.integrate_box([-np.inf, -np.inf], [x, x]) / 
+            prev_kde.integrate_box_1d(-np.inf, x),
+        joint_kde.integrate_box([-np.inf, x], [x, np.inf]) / 
+            prev_kde.integrate_box_1d(x, np.inf)
+    ]
+    return bayes_update(prev_cdf, conditionals)
+
+def cdf_mlmc(df : pd.DataFrame, x_nodes : np.ndarray, value_name : str, 
+             method : str = "joint"):
+    """
+    Construct the CDF for a distribution using MLMC
 
     Input:
         df : pandas.DataFrame object
-            must contain keys
-            - "level" indicates the refinement level
-            - "seed" identifier for each sample, e.g. sample 10 at level 1 => seed = 10
-            - stopping_time : value in question
-        stopping_time : string
-            name of the stopping time attribute
-        t_grid : list or array object
-            array of time nodes on which problem data is defined
-    
+            data in question, must have the following keys
+            - "level" refinement level on which sample was generated
+            - "seed" identifier of sample number, e.g. sample 10 on level 2 is seed 10
+            - value_name value in question on which the CDF will be constructed
+                (see below)
+        x_nodes : numpy array of size (n,)
+            nodes on which to compute the CDF
+            the cdf will be computed pointwise at each x node
+        value_name : string
+            name of value to build CDF for
+        method : string, optional
+            name of method to use to build conditional updates to CDF
+            possible values are
+                - "joint" (default) - build joint KDE and integrate
+                - "subsample" - subsample data based on previous and do KDE
+                - "indicator" - probability as expectation of indicator with
+                    bayesian updating
+                - "brute" - brute-force type method, subsample data
+                    and compute probabilities with divisions by length of array
     Output:
-        cdf_vals : callable function with signature p = mlmc_cdf(t), and 0 <= p <= 1, 
-            non decreasing function
-            The CDF computed using MLMC
+        cdf : numpy array of size (n,)
+            CDF values at corresponding x nodes
     """
 
+    # preprocess data - unique levels
     levels = sorted(list(set(df["level"])))
+    # storage for cdfs computed using each level
+    cdfs = []
 
-    cdf_vals = np.zeros_like(t_grid)
+    # determine method to do Bayesian updating to CDF
+    if method == "brute" :
+        cdf_update = brute_force_cdf_update
+    elif method == "indicator" : 
+        cdf_update = sum_indicator_cdf_update
+    elif method == "subsample" : 
+        cdf_update = subsampled_kde_cdf_update
+    else:
+        cdf_update = joint_kde_cdf_update
 
-    for j, ℓ in enumerate(levels):
-        curr_data = df.query(f"level == {ℓ}")
-        kde = gaussian_kde(np.array(curr_data[stopping_time]))
-
-        if j == 0:
-            # compute starting CDF from KDE directly
-            cdf = lambda t: kde.integrate_box(0, t)
-            cdf_vals = np.array(list(map(cdf, t_grid)))
-
-        else:
-            max_seed = curr_data["seed"].max()
-            prev_data = df.query(f"level == {levels[j-1]}").query(f"seed <= {max_seed}")
-
-            prev_stopping_time = np.array(prev_data[stopping_time])
-            curr_stopping_time = np.array(curr_data[stopping_time])
-
-            # ensure sizes are each the same
-            length = min([len(prev_stopping_time), len(curr_stopping_time)])
-            prev_stopping_time = prev_stopping_time[:length]
-            curr_stopping_time = curr_stopping_time[:length]
-
-            # update cdf values
-            cdf_vals = ensure_nondecreasing(
-                update_cdf_values(t_grid, prev_stopping_time, curr_stopping_time, cdf_vals)
-            )
-
-    return cdf_vals
-
-def update_cdf_values(t, prev_data, curr_data, current_cdf):
-    
-    # conditional probabilities
-    def conditional_kde(τ : float, good : bool) -> float:
-        """
-        Evaluate conditional probablitities for both good and bad from previous data
-
-        Input: τ : input point, scalar, good : boolean
-        Output: integral : scalar in [0, 1]
-        """
-        if good:
-            indices = prev_data <= τ
-        else:
-            indices = prev_data > τ
-        # guard clauses for no data
-        if np.sum(indices) == 0:
-            return 0
-        if np.sum(indices) == 1:
-            return (curr_data[indices] <= τ).astype(float)
+    for index, level in enumerate(levels):
+        # guard clause in case no CDF computed yet
+        curr_data = df.query(f"level == {level}")
+        if index == 0:
+            # build the CDF on the first level using standard MC for KDE
+            kde = gaussian_kde(curr_data[value_name])
+            cdfs.append(np.array(list(map(
+                lambda x: kde.integrate_box_1d(0, x), x_nodes
+            ))))
+            # next iteration in loop
+            continue
         
-        # finally try to build the conditional KDE
-        try:
-            cond_kde = gaussian_kde(curr_data[indices])
-            return cond_kde.integrate_box(0, τ)
-        except np.linalg.LinAlgError:
-            # repeated values, default to basic approach
-            return np.mean(curr_data[indices] <= τ)
-
-    # apply these to input data to build new CDF
-    new_cdf_vals = np.array(list(map(lambda τ: conditional_kde(τ, True), t))) * current_cdf + \
-        np.array(list(map(lambda τ: conditional_kde(τ, False), t))) * (1 - current_cdf)
+        # take previous level's data which is repeated on current level
+        max_seed = max(curr_data["seed"])
+        prev_data = np.array(df.query(
+            f"level == {levels[index-1]}").query(
+            f"seed <= {max_seed}")[value_name])
+        
+        # cast curr_data to array
+        new_data = np.array(curr_data[value_name])
+        
+        # compute new cdf
+        cdfs.append(np.array(list(map(
+            lambda x, c: cdf_update(x, new_data, prev_data, c),
+            x_nodes, cdfs[-1]
+        ))))
     
-    return new_cdf_vals
+    # return a dictionary of constructed cdfs with each level
+    output = {
+        level : cdf 
+        for (level, cdf) in zip(levels, cdfs)
+    }
+    return output
+        
