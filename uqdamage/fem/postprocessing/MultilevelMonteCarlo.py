@@ -155,6 +155,10 @@ def bayes_update(p : float, conditions):
     Output:
         updated probability using bayes update proceedure
     """
+    for i in range(len(conditions)):
+        if np.isnan(conditions[i]) or np.isinf(conditions[i]):
+            conditions[i] = 0
+    
     return p * conditions[0] + (1 - p) * conditions[1]
 
 def brute_force_cdf_update(x : float, 
