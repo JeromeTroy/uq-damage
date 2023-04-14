@@ -124,6 +124,59 @@ def ensure_nondecreasing(sequence):
     return new_seq
         
 
+def quick_cdf(arr : np.ndarray, x : float) -> float:
+    """
+    Quick CDF computation for P(X <= x)
+
+    Input:
+        arr : list like of floats
+            arr[i] = X_i, i'th sample
+        x : float
+            comparison value, x in P(X <= x)
+    Output:
+        p : float in [0, 1]
+            evaluation of P(X <= x)
+    """
+
+    if len(arr) == 0:
+        return 0
+    
+    return np.sum(arr <= x) / len(arr)
+
+def brute_force_cdf_update(x : float, 
+                           new_data : np.ndarray, 
+                           prev_data : np.ndarray,
+                           prev_cdf : float):
+    """
+    Compute updated CDF using brute force method:
+    subsample new_data based on prev_data
+    evaluate quick CDF on sub sample
+
+    Input:
+        x : float
+            comparison value, used in P(X <= x)
+        new_data, prev_data : numpy arrays
+            arrays of data from previous level and current level
+        prev_cdf : float in [0, 1]
+            previous level's CDF value
+    Output:
+        new_cdf : float in [0, 1]
+            updated CDF value
+    """
+
+    conditions = (
+        quick_cdf(new_data[prev_data <= x], x), 
+        quick_cdf(new_data[prev_data > x], x)
+    )
+
+    new_cdf = prev_cdf * conditions[0] + \
+        (1 - prev_cdf) * conditions[1]
+    return new_cdf
+
+def split_data_by_levels(df : pd.DataFrame, value_name : str):
+    """
+    
+    """
 def cdf_stopping_time(df : pd.DataFrame, stopping_time : str, t_grid):
     """
     Use conditional probability based MLMC to compute the
