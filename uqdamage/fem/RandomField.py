@@ -67,7 +67,7 @@ class RandomGaussianField:
     """
     Gaussian random field generator for FEniCs
 
-    μ - mean. FEniCs funciton.  It is assumued that it is constant or μ ∈ V
+    μ - mean. FEniCs function.  It is assumued that it is constant or μ ∈ V
     ρ - covariance kernel. Python style funcion
     mesh - FEniCs mesh
     V - Scalar function space for the field
@@ -334,59 +334,48 @@ class RandomGaussianField:
         return C
 
 
-    def load_field(matrix_vals, μ, V, n_max):
-
+    def save_eigendecomp(self, fname_out : str):
         """
-        Load in parameters λ and φ
+        Save the eigendecomposition to a file for later usage
+        This is saved using numpy saving
 
-        Abstracted function, returns an instance of RandomGaussianField
+        Input:
+            fname_out : string
+                name of output file
         """
 
-        # build blank field
-        X = RandomGaussianField()
+        if not self.sample_ready:
+            self.λ, self.φ = self.numerical_eigendecomp()
+            self.sample_ready = True
 
-        # set values
-        X.μ = μ
-        X.λ_vals = matrix_vals[0, :]
-        X.λ_vals[X.λ_vals < 0] = 0
-        X.φ_vals = matrix_vals[1:, :]
-        X.V = V
-        X.mesh = V.mesh()
-        X.n_max = n_max
+        n, m = self.φ.shape
+        np.savez_compressed(
+            fname_out, eigenvalues=self.λ, 
+            eigenfunctions=self.φ, 
+            num_modes=n
+        )
 
-        return X
-
-    
-
-    
-
-
-    def save_fields(self, filename):
+    def load_eigendecomp(self, fname_in : str):
         """
-        save data to reload field later
+        Read in eigendecomposition from file 
+
+        Input:
+            fname_in : string
+                name of input file
         """
-        [m, n] = np.shape(self.ϕ_vals)
-        mtx = np.zeros([m+1, n])
-        k = len(self.λ_vals)
-        mtx[0, :k] = self.λ_vals
-        mtx[1:, :] = self.φ_vals
 
-        np.savez_compressed(filename, mtx=mtx, n_max=self.n_max)
+        data = np.load(fname_in)
+        self.λ = data["eigenvalues"]
+        self.φ = data["eigenfunctions"]
+        self.sample_ready = True
 
-    
-
-    
 
     def get_spectrum(self):
+        if not self.sample_ready:
+            self.λ, self.φ = self.numerical_eigendecomp()
+            self.sample_ready = True
         return self.λ_vals
 
-    
-
-    def get_random_numbers(self):
-        return self.ξ
-
-    def set_random_numbers(self, ξ):
-        self.ξ = ξ
 
 class RandomLogNormalField(RandomGaussianField):
 
