@@ -7,7 +7,7 @@ RandomField.py - Module for random fields
 import numpy as np
 from fenics import (
     TrialFunction, TestFunction, Function,
-    dx, assemble, PETScMatrix
+    dx, assemble, PETScMatrix, Constant
 )
 import scipy.linalg
 import scipy.sparse as sp
@@ -18,50 +18,8 @@ from slepc4py import SLEPc
 import traceback
 import sys
 import logging
-#from numba import jit
 from math import sqrt
 from typing import Callable
-
-
-# #@jit
-# def covariance_matrix_csr(x: list[tuple[float]], cutoff: float, ρ: Callable) -> (list[int], list[int], list[float]):
-#     """
-#     Helper function for getting CSR values for covariance matrix
-
-#     Input:
-#         x : list of 2-tuples of floats
-#             each entry is a coordinate pair (x, y) of a point in the mesh
-#         cutoff : float > 0
-#             cutoff distance.  Points which are further in distance than this
-#             are considered so far that the covariance is zero.
-#             This is used to enforce sparsity
-#         ρ : Callable, signature ρ(x, y) -> float
-#             where x, y are 2-tuples of floats
-#             This is the covariance kernel.
-#     Output:
-#         counts, cols, data : CSR values for matrix
-#     """
-#     # csr matrix values
-#     counts = [0]
-#     cols = []
-#     data = []
-
-#     # size, and counter for row stops
-#     n = len(x)
-#     counter = 0
-
-#     for i, xs in enumerate(x):
-#         for j, ys in enumerate(x):
-#             if sqrt((xs[0] - ys[0])**2 + (xs[1] - ys[1])**2) < cutoff:
-#                 # points are close enough to include
-#                 counter += 1
-#                 cols.append(j)
-#                 data.append(ρ(xs, ys))
-
-#         # end of row
-#         counts.append(counter)
-
-#     return counts, cols, data
 
 class RandomGaussianField:
     """
@@ -115,6 +73,9 @@ class RandomGaussianField:
         self.M = None
         self.λ = None
         self.φ = None
+        
+        # hold this value, it may be useful later
+        self.trace = 0
 
         self.sample_ready = False
 
@@ -144,7 +105,7 @@ class RandomGaussianField:
         # if we haven't bailed out yet, we should be okay
         return True
     
-    def sample_field(self, zero_tol=None):
+    def sample_field(self):
         """
         Generate a sample of the random field, and return as a function
         on self.V
@@ -169,7 +130,7 @@ class RandomGaussianField:
             if self.eig_gen is not None:
                 self.sample_ready = True
                 return self.sample_from_generator()
-            return self.sample_from_covariance(zero_tol=zero_tol)
+            return self.sample_from_covariance()
         
         raise RuntimeError("There is not enough provided information to sample from the field!")
 
@@ -189,15 +150,19 @@ class RandomGaussianField:
             ξ = np.random.randn()
             vals += ξ * np.sqrt(np.real(λ)) * np.array(φ(x))
 
+            # update trace value
+            self.trace += np.real(λ)
+
         # add mean-0 field to mean-μ field
         Σ.vector()[:] += vals
 
         return Σ
 
-    def sample_from_covariance(self, zero_tol=None):
+    def sample_from_covariance(self):
         if not self.sample_ready:
             self.λ, self.φ = self.numerical_eigendecomp()
             self.sample_ready = True
+            self.trace = np.sum(self.λ)
         
         # random numbers, weightings of modes in KL expansion
         ξ_vec = np.random.randn(self.n_max)
@@ -379,126 +344,80 @@ class RandomGaussianField:
 
 class RandomLogNormalField(RandomGaussianField):
 
-    def sample_field(self, threshold=None):
-        logX = super().sample_field(threshold)
+    """
+    Inherits all methods from the above RandomGaussianField
+    Overrides sampling method to deal with exp(X(x)) pointwise
+    """
+
+    def __init__(self, 
+                 mean=None, 
+                 **kwargs):
+        # initialize with mean-zero gaussian field
+        super().__init__(mean=Constant(0), **kwargs)
+
+        self.ln_mean = mean
+        self.mult_mean = None
+
+    def sample_field(self):
+        logX = super().sample_field()
+
+        # Gaussian Field keeps track of the trace
+        if self.mult_mean is None:
+            # compute this using formula
+            # log Y ~ N(m, C) => E[Y] = exp(m + tr(C) / 2) =: μ (given)
+            # so Z ~ N(0, C) => Y = e^m * exp(Z)
+            # need factor of e^m = μ * exp(-tr(C) / 2)
+            self.mult_mean = self.ln_mean * np.exp(-self.trace / 2)
 
         X = Function(self.V)
-        X.vector()[:] = np.exp(logX.vector()[:])
+        X.vector()[:] = self.mult_mean * np.exp(logX.vector()[:])
 
         return X
 
-    def low_memory_generator_sampling(self, 
-        eig_gen, μ, V, n_max, scaling=1, log_every=1000):
-        
-        # total variance
-        gen_for_λ = eig_gen(n_max)
-        λ_sum = sum(v[0] for v in gen_for_λ)
-        # log normal RV mean
-        log_normal_μ = Constant(np.log(float(μ)) - λ_sum / 2)
-        log_Σ = super().low_memory_generator_sampling(eig_gen,
-            log_normal_μ, V, n_max, scaling, log_every)
-
-        # convert normal var to log-normal
-        Σ = Function(V)
-        Σ.vector()[:] = np.exp(log_Σ.vector()[:])
-        return Σ
-
-    def load_field(matrix_vals, μ, V, mesh, n_max):
-        """
-        Load in parameters λ and φ
-
-        Abstracted function, returns an instance of RandomGaussianField
-        """
-
-        # build blank field
-        X = RandomLogNormalField()
-
-        # set values
-        X.μ = μ
-        X.λ_vals = matrix_vals[0, :]
-        X.λ_vals[X.λ_vals < 0] = 0
-        X.φ_vals = matrix_vals[1:, :]
-        X.V = V
-        X.mesh = mesh
-        X.n_max = n_max
-
-        return X
-
-    def from_eigen_expansion(eigen_gen, μ, V, n_max, scaling=1, log_every=1000):
-        X_gaus = RandomGaussianField.from_eigen_expansion(
-            eigen_gen, Constant(0), V, n_max, scaling=scaling, 
-            log_every=log_every)
-
-        # collect the sum of eigenvalues
-        eigenval_sum = sum(X_gaus.λ_vals)
-        # correction of mean
-        log_normal_μ = Constant(np.log(float(μ)) - eigenval_sum / 2)
-
-        # convert gaussian field to log-normal field
-        [m, n] = np.shape(X_gaus.ϕ_vals)
-        mtx = np.zeros([m+1, n])
-        k = len(X_gaus.λ_vals)
-        mtx[0, :k] = X_gaus.λ_vals
-        mtx[1:, :] = X_gaus.φ_vals
-
-        X = RandomLogNormalField.load_field(mtx, log_normal_μ, V, V.mesh(), X_gaus.n_max)
-        return X
 
 class RandomWeibullField(RandomGaussianField):
+    def __init__(self, 
+                 shape_param=1,
+                 mean=None,
+                 **kwargs):
+        """
+        Weibull random Field
 
-    def __init__(self, μ=None, ρ=None, mesh=None, V=None, n_max=10, l=0.05, kappa=1):
-        super().__init__(μ, ρ, mesh, V, n_max, l)
+        Input:
+            shape_param : float > 0
+                shape parameter for Weibull Marginal
+            **kwargs : other arguments for RandomGaussianField() constructor
+        """
+        # standard initialization
+        # Gaussian samples should have mean zero
+        super().__init__(mean=Constant(0), **kwargs)
         
-        self.κ = kappa
-        self.scale = gamma(1 + 1/kappa)
+        # store mean for later
+        self.weibull_μ = mean
+        self.κ = shape_param
+        self.scale = gamma(1 + 1/shape_param)
 
-    def sample_field(self, threshold=None):
-        X1 = super().sample_field(threshold=threshold)
-        X2 = super().sample_field(threshold=threshold)
+    def sample_field(self):
+        # see Modeling and estimation of some non Gaussian random fields
+        # by Christian Caamaño Carrillo, Ph.D. thesis
 
+        # generate two i.i.d. Gaussian fields
+        X1 = super().sample_field()
+        X2 = super().sample_field()
+
+        # build Weibull field as described in thesis
         Y = Function(self.V)
-        Y.vector()[:] = np.power(0.5 * (X1.vector()[:]**2 + X2.vector()[:]**2), 1/self.κ)
+        Y.vector()[:] = np.power(
+            0.5 * (X1.vector()[:]**2 + X2.vector()[:]**2), 
+            1/self.κ
+        )
 
-        Z = self.μ * Y / self.scale
+        # apply mean and scaling
+        Z = self.weibull_μ * Y / self.scale
+
         return Z
 
-    def load_field(matrix_vals, μ, V, mesh, n_max):
-        """
-        Load in parameters λ and φ
-
-        Abstracted function, returns an instance of RandomGaussianField
-        """
-
-        # build blank field
-        X = RandomWeibullField()
-
-        # set values
-        X.μ = μ
-        X.λ_vals = matrix_vals[0, :]
-        X.λ_vals[X.λ_vals < 0] = 0
-        X.φ_vals = matrix_vals[1:, :]
-        X.V = V
-        X.mesh = mesh
-        X.n_max = n_max
-
-        return X
-
-    def low_memory_generator_sampling(self, eig_gen, μ, V, n_max, κ, log_every=1000):
-
-        # enforce scaling = 1, actual scaling is controlled by κ
-        scaling = 1
-        # build 2 independent gaussian samples, extract numpy arrays
-        Σ_1 = super().low_memory_generator_sampling(eig_gen,
-            Constant(0), V, n_max, scaling, log_every).vector()[:]
-        Σ_2 = super().low_memory_generator_sampling(eig_gen,
-            Constant(0), V, n_max, scaling, log_every).vector()[:]
-
-        # assign as ((S1^2 + S2^2) / 2)^1/κ
-        Σ = Function(V)
-        Σ.vector()[:] = np.power(0.5 * Σ_1**2 + Σ_2**2, 1/κ)
-        # apply mean and scaling
-        Σ = Σ * μ / gamma(1 + 1/κ)
-        return Σ
+    
 
     
     
