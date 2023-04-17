@@ -10,4 +10,4 @@ from uqdamage.fem.Domains2D import *
 from uqdamage.fem.DamageDynamics2D import *
 from uqdamage.fem.LinearElastodynamics import *
 from uqdamage.fem.postprocessing import *
-#from uqdamage.fem.RandomField import *
+from uqdamage.fem.RandomField import *
