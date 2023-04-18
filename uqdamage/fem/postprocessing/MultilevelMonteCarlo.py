@@ -100,9 +100,9 @@ def ensure_nondecreasing(sequence):
     Helper function to ensure a sequence of data is non decreasing
 
     Input:
-        sequence : list of numbers
+        sequence : numpy array size (n,)
     Output:
-        new_seq : list of numbers, which is now non decreasing
+        new_seq : numpy array size (n,), which is nondecreasing
 
     If the next number is lower than the previous, the next number is set to the previous
     """
@@ -121,6 +121,9 @@ def ensure_nondecreasing(sequence):
     if has_changed:
         return ensure_nondecreasing(new_seq)
 
+    # fix values larger than 1 for CDF
+    new_seq[new_seq > 1] = 1
+    
     return new_seq
         
 
@@ -310,7 +313,7 @@ def joint_kde_cdf_update(x : float,
     return bayes_update(prev_cdf, conditionals)
 
 def cdf_mlmc(df : pd.DataFrame, x_nodes : np.ndarray, value_name : str, 
-             method : str = "joint"):
+             method : str = "joint", ensure_nondec=False):
     """
     Construct the CDF for a distribution using MLMC
 
@@ -335,6 +338,9 @@ def cdf_mlmc(df : pd.DataFrame, x_nodes : np.ndarray, value_name : str,
                     bayesian updating
                 - "brute" - brute-force type method, subsample data
                     and compute probabilities with divisions by length of array
+        ensure_nondec : boolean, optional
+            whether to enforce nondecreasing on the CDF
+            the default is False
     Output:
         cdf : numpy array of size (n,)
             CDF values at corresponding x nodes
@@ -381,6 +387,9 @@ def cdf_mlmc(df : pd.DataFrame, x_nodes : np.ndarray, value_name : str,
             lambda x, c: cdf_update(x, new_data, prev_data, c),
             x_nodes, cdfs[-1]
         ))))
+
+    if ensure_nondec:
+        cdfs = list(map(ensure_nondecreasing, cdfs))
     
     # return a dictionary of constructed cdfs with each level
     output = {
