@@ -11,8 +11,6 @@ from uqdamage.fem.RandomField import RandomLogNormalField
 
 from random_field_decomposition import laplacian_decomposition
 
-NOTCHED = True
-
 # domain setup
 w = 0.3
 
