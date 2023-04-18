@@ -7,7 +7,8 @@ RandomField.py - Module for random fields
 import numpy as np
 from fenics import (
     TrialFunction, TestFunction, Function,
-    dx, assemble, PETScMatrix, Constant
+    dx, assemble, PETScMatrix, Constant, 
+    project
 )
 import scipy.linalg
 import scipy.sparse as sp
@@ -413,7 +414,7 @@ class RandomWeibullField(RandomGaussianField):
         )
 
         # apply mean and scaling
-        Z = self.weibull_μ * Y / self.scale
+        Z = project(self.weibull_μ * Y / self.scale, self.V)
 
         return Z
 
