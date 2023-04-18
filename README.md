@@ -27,7 +27,7 @@ $conda install -c conda-forge ipython jupyter
 
 ### Cloning and Installing uq-damage
 
-$git clone https://github.com/JeromeTroy/uq-damage.git && cd uq-damage
+$git clone <https://github.com/JeromeTroy/uq-damage.git> && cd uq-damage
 
 $pip install -e ./
 
@@ -40,3 +40,7 @@ $pip install -e ./
 - fenics
 - meshio
 - pathos
+
+### Additional Software
+
+It is recommended to install the Paraview program for viewing resulting data. Paraview can visualize the output XDMF files from the simulations. 
