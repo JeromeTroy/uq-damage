@@ -161,7 +161,7 @@ def AnnularDomain(r, h):
 
     # construct polygonal approximations to the inner and outer rings
     nθ = int(2 * np.pi / h)
-    θ = np.linspace(0, 2*np.pi, nθ)
+    θ = np.linspace(0, 2*np.pi, nθ)[:-1]
     points_outer = [
         model.add_point((np.cos(t), np.sin(t)), mesh_size=h)
         for t in θ
@@ -177,7 +177,7 @@ def AnnularDomain(r, h):
     # the loop creates an area of tighter mesh at the junction
     # this offset avoids the outer loop and inner loop having the same
     # area of tighter mesh, creating an overall more uniform mesh
-    θ = np.linspace(0, 2*np.pi, nθin) + np.pi / 2
+    θ = np.linspace(0, 2*np.pi, nθin)[:-1] + np.pi
     points_inner = [
         model.add_point((r * np.cos(t), r * np.sin(t)), mesh_size=h)
         for t in θ
