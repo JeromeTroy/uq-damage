@@ -2,4 +2,4 @@
 __version__ = "1.0.0"
 
 from uqdamage import fem
-from MultilevelMonteCarlo import *
+from uqdamage.MultilevelMonteCarlo import *
