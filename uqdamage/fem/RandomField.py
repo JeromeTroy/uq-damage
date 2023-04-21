@@ -67,8 +67,9 @@ class RandomGaussianField:
         self.k = kernel
         self.eig_gen = eig_gen
         self.V = space
-        self.n_max = num_modes
         self.max_range = max_range
+
+        self.set_nmax(num_modes)
 
         self.C = None
         self.M = None
@@ -80,7 +81,14 @@ class RandomGaussianField:
 
         self.sample_ready = False
 
-    
+    def set_nmax(self, num_modes):
+        if self.eig_gen is not None:
+            self.n_max = num_modes 
+        elif num_modes > 0:
+            self.n_max = num_modes
+        else:
+            self.n_max = len(self.V.dofmap().dofs())
+
     def can_sample(self):
         """
         Helper function which checks the given parameters for the field
