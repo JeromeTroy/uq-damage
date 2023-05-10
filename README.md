@@ -6,7 +6,7 @@ Uncertainty Quantification in Damage Mechanics Models
 The main source files are located in uqdamage/. Some examples and tests can be seen in the tests/ directory.  These also include demonstrations for creating random fields, and solving the various problems. 
 
 The hpc/ directory includes scripts which can be used to generate data.  These can be run on high-performance computing platforms.  Most are structured as to generate a random field based on a specified random seed for reproducibility.  They can be run using 
-$python script.py seed-number
+$python script.py \<seed-number\>
 
 ## Installation Instructions
 
@@ -27,7 +27,7 @@ $conda install -c conda-forge ipython jupyter
 
 ### Cloning and Installing uq-damage
 
-$git clone <https://github.com/JeromeTroy/uq-damage.git> && cd uq-damage
+$git clone <https://github.com/JeromeTroy/uq-damage.git> && cd uq-damage/
 
 $pip install -e ./
 
