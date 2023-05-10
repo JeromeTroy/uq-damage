@@ -5,8 +5,9 @@ Methods for performing Multilevel Monte Carlo on data
 import numpy as np 
 import pandas as pd 
 import logging
+from typing import Iterable
 
-from scipy.stats import gaussian_kde
+from scipy.stats import gaussian_kde, beta
 
 from uqdamage.fem.experiments.UniaxialStress import interpolate_stress_on_strain
 
@@ -398,3 +399,45 @@ def cdf_mlmc(df : pd.DataFrame, x_nodes : np.ndarray, value_name : str,
     }
     return output
         
+def clopper_pearson_interval(cdf, n, α):
+    """
+    Build a Clopper-Pearson type confidence interval around a CDF
+
+    Input:
+        cdf : float or Iterable object
+            cummulative distribution function for QoI
+        n : int > 0
+            number of samples used to generate CDF
+        α : float in [0, 1]
+            confidence level
+
+    Output:
+        low, high:
+            arrays or floats of same shape as cdf
+            lower and upper bounds for confidence interval around cdf
+    """
+
+    if isinstance(cdf, Iterable):
+        # recursively map low and high pointwise over all values
+        low, high = zip(*list(map(
+            lambda c: clopper_pearson_interval(c, n, α), 
+            list(cdf)
+        )))
+        return low, high
+    
+    # cdf is scaled Binomial R.V., what are corresponding success counts
+    successes = int(cdf * n)
+    failures = n - successes
+    
+    low = beta.ppf(α, successes, failures + 1)
+    # guard against nan values
+    if np.isnan(low):
+        low = 0
+    high = beta.ppf(1 - α, successes + 1, failures)
+    # guard against nan values
+    if np.isnan(high):
+        high = 1
+    
+    return low, high
+    
+
