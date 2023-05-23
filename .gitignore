@@ -134,3 +134,7 @@ _mesh*
 # data files
 *.xdmf
 *.h5
+
+# video files
+*.avi
+*.gif
