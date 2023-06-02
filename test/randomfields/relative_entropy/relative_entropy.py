@@ -149,15 +149,14 @@ if __name__ == "__main__":
     ℓ1_vals = [0.1, 0.2, 0.5]
 
     # stopping parameters for sum computation
-    τ = 1e-6
-    yield_freq = 10
+    n_modes = 100
 
     # alternative model, note ℓ2 = 0 may be problematic, so remove it
     ℓ2 = np.linspace(0, 1, 101)[1:]
 
     # compute relative entropy for each ℓ2 value
     sums = [np.array(list(map(
-                lambda ℓ: compute_sum(τ, ℓ1, ℓ, yield_freq=yield_freq), 
+                lambda ℓ: list(do_sum(n_modes, ℓ1, ℓ))[-1], 
                 ℓ2
             )))
             for ℓ1 in ℓ1_vals]
